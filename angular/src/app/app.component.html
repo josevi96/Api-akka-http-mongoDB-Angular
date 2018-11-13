@@ -1,0 +1,26 @@
+<div class="todo">
+ <input type="text" (keyup)="onNameKeyUp($event)">
+
+  <button (click)="showAll()" class="btn">
+    Show All
+  </button>
+
+  <button (click)="showPending()" class="btn">
+    Show Pending
+  </button>
+
+  <button (click)="showDone()" class="btn">
+    Show Done
+  </button>
+
+  <ul>
+    <li *ngFor="let j of data; let i = index">
+      Tarea numero: {{i}}
+      <br/>       id:   {{j.id}}
+      <br/>       titulo:    {{j.title}}
+      <br/>       descripción:    {{j.description}}
+      <br/>       done:   {{j.done}}
+    </li>
+  </ul>
+
+</div>
