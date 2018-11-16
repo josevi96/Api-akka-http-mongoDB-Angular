@@ -6,17 +6,19 @@ import akka.util.Timeout
 import de.heikoseeberger.akkahttpcirce.FailFastCirceSupport._
 import io.circe.generic.auto._
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext.Implicits.global
 
 
 trait Router {
   def route: Route
 }
-class TodoRouter(actor: ActorRef) extends Router with Directives with TodoDirective {
-  implicit val timeout: Timeout = 5.minutes
+class TodoRouter(val actor: ActorRef)(implicit executionContext: ExecutionContext)
+  extends Router with Directives with TodoDirective {
+
+  implicit val timeout: Timeout = 10.minutes
   implicit val sender = actor
-  override def route: Route = pathPrefix("todos") {
+  override def route: Route = pathPrefix("todos")   {
     pathEndOrSingleSlash {
       get {
         println("por aqui pasa")
@@ -50,7 +52,7 @@ class TodoRouter(actor: ActorRef) extends Router with Directives with TodoDirect
       } ~
       path(s"search" / Segment) { id =>
         get {
-          val request = (actor ? SearchingId(id)).mapTo[Todo]
+          val request = (actor ? SearchingId(id)).mapTo[List[Todo]]
           onSuccess(request)(complete(_))
         }
       }

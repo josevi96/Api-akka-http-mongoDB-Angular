@@ -2,26 +2,20 @@ import reactivemongo.api.{Cursor, DefaultDB, MongoConnection, MongoDriver}
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.bson.{BSONDocument, BSONDocumentReader, BSONDocumentWriter, Macros, document}
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Try
 
-class mongoDB {
-    val mongoUri = "mongodb://127.0.0.1:27017"
+class mongoDB(implicit connection: Try[MongoConnection], executionContext: ExecutionContext) {
 
-    import scala.concurrent.ExecutionContext.Implicits.global
+    val futureConnection = Future.fromTry(connection)
 
-    val driver = MongoDriver();
-    val parsedURI = MongoConnection.parseURI(mongoUri)
-    val connection = parsedURI.map(driver.connection(_))
+    val db1: Future[DefaultDB] = futureConnection.flatMap(_.database("Todo"))
 
-    def futureConnection = Future.fromTry(connection)
+    val todoCollection: Future[BSONCollection] = db1.map(_.collection("myTodos"))
 
-    def db1: Future[DefaultDB] = futureConnection.flatMap(_.database("Todo"))
+    implicit val personReader: BSONDocumentReader[Todo] = Macros.reader[Todo]
 
-    def todoCollection: Future[BSONCollection] = db1.map(_.collection("myTodos"))
-
-    implicit def personReader: BSONDocumentReader[Todo] = Macros.reader[Todo]
-
-    implicit def personWriter: BSONDocumentWriter[Todo] = Macros.writer[Todo]
+    implicit val personWriter: BSONDocumentWriter[Todo] = Macros.writer[Todo]
 
     def pendingTodo(): Future[List[Todo]] = {
       todoCollection.flatMap(_.find(document("done" -> false)).cursor[Todo]().collect[List](-1, Cursor.FailOnError[List[Todo]]()))
@@ -32,37 +26,25 @@ class mongoDB {
     }
 
     def allTodo(): Future[List[Todo]] = {
-      val a = todoCollection.flatMap(_.find(document()).cursor[Todo]().collect[List](-1, Cursor.FailOnError[List[Todo]]()))
-      println(a)
-      a
+      todoCollection.flatMap(_.find(document()).cursor[Todo]().collect[List](-1, Cursor.FailOnError[List[Todo]]()))
     }
 
     def searchId(id: String): Future[List[Todo]] = {
       todoCollection.flatMap(_.find(document("id" -> id)).cursor[Todo]().collect[List](-1, Cursor.FailOnError[List[Todo]]()))
     }
 
-    def toDone(todoID: String): Future[Int] = {
-      val selector = document(
-        "id" -> todoID
-      )
-      val modifier = BSONDocument(
-        "$set" -> BSONDocument(
-          "done" -> true
-        )
-      )
+    def toDone(todoID: String): Future[List[Todo]] = {
+      val selector = BSONDocument("id" -> todoID)
+      val modifier = BSONDocument("$set" -> BSONDocument("done" -> true))
       todoCollection.flatMap(_.update(selector, modifier).map(_.n))
+      searchId(todoID)
     }
 
-    def toPending(todoID: String): Future[Int] = {
-      val selector = document(
-        "id" -> todoID
-      )
-      val modifier = BSONDocument(
-        "$set" -> BSONDocument(
-          "done" -> false
-        )
-      )
+    def toPending(todoID: String): Future[List[Todo]] = {
+      val selector = BSONDocument("id" -> todoID)
+      val modifier = BSONDocument("$set" -> BSONDocument("done" -> false))
       todoCollection.flatMap(_.update(selector, modifier).map(_.n))
+      searchId(todoID)
     }
   }
 

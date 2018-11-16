@@ -1,14 +1,12 @@
 
-import scala.util.{Success,Failure}
-import scala.concurrent.{Await, ExecutionContext}
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.stream.ActorMaterializer
-import akka.pattern.ask
+import reactivemongo.api.{MongoConnection, MongoDriver}
+import akka.pattern.pipe
+
 import scala.concurrent.duration._
-import akka.http.scaladsl.server
-import akka.io.Inet.SO.ReceiveBufferSize
-import akka.util.Timeout
-import reactivemongo.api.MongoConnection
+import scala.concurrent.{Await, ExecutionContext}
+import scala.util.{Failure, Success, Try}
 
   object Main extends App {
     implicit val system: ActorSystem = ActorSystem("todoApi")
@@ -17,10 +15,17 @@ import reactivemongo.api.MongoConnection
 
     val host = "0.0.0.0"
     val port = 9002
-    val  actor =system.actorOf(Props[ChangeActor])
+
+    val mongoUri = "mongodb://127.0.0.1:27017"
+
+    val driver = MongoDriver()
+    val parsedURI = MongoConnection.parseURI(mongoUri)
+    implicit val connection: Try[MongoConnection] = parsedURI.map(driver.connection(_))
+
+    val db = new mongoDB
+    val actor =system.actorOf(Props[ChangeActor])
     val router = new TodoRouter(actor)
     val server = new Server(router,host,port)
-    val db = new mongoDB
 
     //Estados del actor, se podria poner en otro archivo:
     sealed trait ActorState
@@ -40,38 +45,18 @@ import reactivemongo.api.MongoConnection
       def mreceive(todoList: InMemoryTodoRepository): Receive = {
 
         case AllTodo =>
-          println("porsfasdfasf")
+          val a = db.allTodo() pipeTo sender()
 
-          db.allTodo().onComplete{
-          case Success(a) =>  sender ! a
-          case Failure(exception) => throw new Exception("error en all bd")
-        }
-
-        case DoneTodo => db.doneTodo().onComplete {
-          case Success(a) => sender ! a
-          case Failure(exception) => throw new Exception("error en done bd")
-        }
-
-        case PendingTodo => db.pendingTodo().onComplete {
-          case Success(a) => sender ! a
-          case Failure(exception) => throw new Exception("error en pending bd")
-        }
-
-        case SearchingId(id) => db.searchId(id).onComplete{
-          case Success(a) => sender ! a
-          case Failure(exception) => throw new Exception(s"error buscando id : ${id}")
-        }
+        case DoneTodo => db.doneTodo() pipeTo sender()
 
 
-        case ToDoItem(id : String ) => db.toDone(id).onComplete{
-          case Success(a) => printf("a")
-          case Failure(exception) => throw new Exception(s"error en TodoItem con ${id}")
-        }
+        case PendingTodo => db.pendingTodo() pipeTo sender()
 
-        case UnDoneItem(id : String)   => db.toDone(id).onComplete{
-          case Success(a) => printf("a")
-          case Failure(exception) => throw new Exception(s"error en TodoItem con ${id}")
-        }
+        case SearchingId(id) => db.searchId(id) pipeTo sender()
+
+        case ToDoItem(id : String ) => db.toDone(id) pipeTo sender()
+
+        case UnDoneItem(id : String) => db.toPending(id) pipeTo sender()
 
         case _ =>  throw new Exception("kha pachao?")
       }
